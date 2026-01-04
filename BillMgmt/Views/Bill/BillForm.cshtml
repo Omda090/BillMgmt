@@ -1,0 +1,278 @@
+﻿@model BillMgmt.Models.ViewModels.BillVm
+@{
+    ViewBag.Title = Model.BillId.HasValue ? "Edit Bill" : "Create Bill";
+}
+
+<h2>@ViewBag.Title</h2>
+
+@using (Html.BeginForm("Save", "Bill", FormMethod.Post, new { id = "billForm" }))
+{
+    @Html.AntiForgeryToken()
+
+    if (Model.BillId.HasValue)
+    {
+        @Html.HiddenFor(x => x.BillId)
+    }
+
+    <div style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;gap:12px;align-items:center;">
+            <div>
+                <label>عملاء</label><br />
+                @Html.DropDownListFor(m => m.CustomerId, Model.Customers, "-- اختر --", new { @class = "form-control", style = "width:220px;" })
+            </div>
+
+            <div>
+                <label>مخازن</label><br />
+                @Html.DropDownListFor(m => m.StoreId, Model.Stores, "-- اختر --", new { @class = "form-control", id = "StoreId", style = "width:220px;" })
+            </div>
+
+            <div>
+                <label>اجمالى الفاتورة</label><br />
+                <input type="text" id="TotalAmount" class="form-control" style="width:160px;background:#f7f7f7;" readonly
+                       value="@Model.TotalAmount.ToString("0.00")" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Entry -->
+    <div style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;gap:12px;align-items:end;">
+            <div>
+                <label>المنتج</label><br />
+                <select id="ProductId" class="form-control" style="width:280px;">
+                    <option value="">-- اختر مخزن أولاً --</option>
+                </select>
+            </div>
+
+            <div>
+                <label>الرصيد بالمخزن</label><br />
+                <input type="text" id="StockQty" class="form-control" style="width:140px;background:#f7f7f7;" readonly />
+            </div>
+
+            <div>
+                <label>السعر</label><br />
+                <input type="text" id="Price" class="form-control" style="width:140px;background:#f7f7f7;" readonly />
+            </div>
+
+            <div>
+                <label>الكمية المطلوبة</label><br />
+                <input type="number" step="0.01" min="0" id="ReqQty" class="form-control" style="width:140px;" />
+            </div>
+
+            <div>
+                <button type="button" id="btnAdd" class="btn btn-success">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div style="border:1px solid #ccc;padding:12px;">
+        <table class="table table-bordered" id="itemsTable">
+            <thead>
+                <tr>
+                    <th style="width:60px;">#</th>
+                    <th>المنتج</th>
+                    <th style="width:120px;">السعر</th>
+                    <th style="width:120px;">الكمية</th>
+                    <th style="width:120px;">الإجمالى</th>
+                    <th style="width:80px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Items != null && Model.Items.Any())
+                {
+                    for (int i = 0; i < Model.Items.Count; i++)
+                    {
+                        <tr>
+                            <td class="rowNo">@(i + 1)</td>
+                            <td>
+                                @Html.Hidden($"Items[{i}].ProductId", Model.Items[i].ProductId, new { @class = "hProductId" })
+                                <span class="pName">@Model.Items[i].ProductName</span>
+                            </td>
+                            <td>
+                                @Html.TextBox($"Items[{i}].Price", Model.Items[i].Price.ToString("0.00"),
+                                    new { @class = "form-control txtPrice", @readonly = "readonly", style = "background:#f7f7f7;" })
+                            </td>
+                            <td>
+                                @Html.TextBox($"Items[{i}].Qty", Model.Items[i].Qty.ToString("0.00"),
+                                    new { @class = "form-control txtQty", @readonly = "readonly", style = "background:#f7f7f7;" })
+                            </td>
+                            <td class="lineTotal">@((Model.Items[i].Price * Model.Items[i].Qty).ToString("0.00"))</td>
+                            <td><button type="button" class="btn btn-danger btn-sm btnRemove">X</button></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+}
+
+@section scripts{
+    <script src="~/Scripts/jquery-1.10.2.min.js"></script>
+   <script>
+    function recalcTotal(){
+        var total = 0;
+        $("#itemsTable tbody tr").each(function(){
+            var lt = parseFloat($(this).find(".lineTotal").text() || "0");
+            total += lt;
+        });
+        $("#TotalAmount").val(total.toFixed(2));
+    }
+
+    function reindexRows(){
+        $("#itemsTable tbody tr").each(function(idx){
+            $(this).find(".rowNo").text(idx + 1);
+
+            $(this).find("input, select").each(function(){
+                var name = $(this).attr("name");
+                if(!name) return;
+
+                name = name.replace(/Items\[\d+\]/g, "Items[" + idx + "]");
+                $(this).attr("name", name);
+            });
+        });
+    }
+
+    // ===== Helpers: silent validation UI (no alerts) =====
+    function markInvalid($el){
+        $el.addClass("is-invalid");
+    }
+    function clearInvalid(){
+        $("#StoreId,#ProductId,#ReqQty").removeClass("is-invalid");
+    }
+
+    // remove invalid styling when user edits
+    $(document).on("change keyup", "#StoreId,#ProductId,#ReqQty", function(){
+        $(this).removeClass("is-invalid");
+    });
+
+    // 1) عند اختيار المخزن: اجلب منتجات المخزن (AJAX)
+    $("#StoreId").change(function(){
+        var storeId = $(this).val();
+
+        $("#ProductId").html('<option value="">-- اختر --</option>');
+        $("#StockQty").val("");
+        $("#Price").val("");
+
+        if(!storeId) return;
+
+        $.getJSON('@Url.Action("GetProductsByStore","Bill")', { storeId: storeId })
+            .done(function(list){
+                var opt = '<option value="">-- اختر --</option>';
+                $.each(list, function(i, x){
+                    opt += '<option value="' + x.id + '">' + x.name + '</option>';
+                });
+                $("#ProductId").html(opt);
+            });
+    });
+
+    // 2) عند اختيار المنتج: اجلب السعر والرصيد (AJAX)
+    $("#ProductId").change(function(){
+        var storeId = $("#StoreId").val();
+        var productId = $(this).val();
+
+        $("#StockQty").val("");
+        $("#Price").val("");
+
+        if(!storeId || !productId) return;
+
+        $.getJSON('@Url.Action("GetProductInfo","Bill")', { storeId: storeId, productId: productId })
+            .done(function(r){
+                // ✅ no alerts
+                if(!r.ok) return;
+
+                $("#StockQty").val(parseFloat(r.stockQty).toFixed(2));
+                $("#Price").val(parseFloat(r.price).toFixed(2));
+            });
+    });
+
+    // 3) Add row to table (NO MESSAGES)
+    $("#btnAdd").click(function(){
+        clearInvalid();
+
+        var storeId = $("#StoreId").val();
+        var productId = $("#ProductId").val();
+        var productName = $("#ProductId option:selected").text();
+        var stockQty = parseFloat($("#StockQty").val() || "0");
+        var price = parseFloat($("#Price").val() || "0");
+        var qty = parseFloat($("#ReqQty").val() || "0");
+
+        // ✅ silent validation (only highlight)
+        var ok = true;
+
+        if(!storeId){ markInvalid($("#StoreId")); ok = false; }
+        if(!productId){ markInvalid($("#ProductId")); ok = false; }
+        if(!(qty > 0)){ markInvalid($("#ReqQty")); ok = false; }
+
+        // if quantity exceeds stock, block silently + highlight qty
+        if(ok && qty > stockQty){
+            markInvalid($("#ReqQty"));
+            ok = false;
+        }
+
+        // prevent duplicates silently
+        if(ok){
+            var exists = false;
+            $("#itemsTable tbody .hProductId").each(function(){
+                if($(this).val() == productId) exists = true;
+            });
+            if(exists){
+                markInvalid($("#ProductId"));
+                ok = false;
+            }
+        }
+
+        if(!ok) return;
+
+        var idx = $("#itemsTable tbody tr").length;
+        var lineTotal = price * qty;
+
+        var row = ''
+        + '<tr>'
+        + '  <td class="rowNo">' + (idx + 1) + '</td>'
+        + '  <td>'
+        + '     <input type="hidden" class="hProductId" name="Items[' + idx + '].ProductId" value="' + productId + '" />'
+        + '     <span class="pName">' + productName + '</span>'
+        + '  </td>'
+        + '  <td>'
+        + '     <input type="text" class="form-control txtPrice" name="Items[' + idx + '].Price" value="' + price.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+        + '  </td>'
+        + '  <td>'
+        + '     <input type="text" class="form-control txtQty" name="Items[' + idx + '].Qty" value="' + qty.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+        + '  </td>'
+        + '  <td class="lineTotal">' + lineTotal.toFixed(2) + '</td>'
+        + '  <td><button type="button" class="btn btn-danger btn-sm btnRemove">X</button></td>'
+        + '</tr>';
+
+        $("#itemsTable tbody").append(row);
+
+        // ✅ keep product selected (no reset)
+        // $("#ProductId").val(""); // removed
+
+        // reset entry fields (without ProductId)
+        $("#StockQty").val("");
+        $("#Price").val("");
+        $("#ReqQty").val("");
+
+        recalcTotal();
+    });
+
+    // 4) remove row
+    $(document).on("click", ".btnRemove", function(){
+        $(this).closest("tr").remove();
+        reindexRows();
+        recalcTotal();
+    });
+
+    $(function(){
+        recalcTotal();
+        var storeId = $("#StoreId").val();
+        if(storeId){
+            $("#StoreId").trigger("change");
+        }
+    });
+</script>
+
+}

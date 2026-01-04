@@ -1,0 +1,228 @@
+﻿@model BillMgmt.Models.ViewModels.BillVm
+@{
+    ViewBag.Title = "Edit Bill";
+}
+
+@* =========================================================
+    #region Page Header
+    - This view renders the Edit Bill screen.
+    - It reuses the same shared form partial: _BillFormPartial
+    ========================================================= *@
+<h2>Edit Bill</h2>
+
+@* =========================================================
+    #region Notifications (TempData)
+    - Displays a success message after saving changes.
+    - You can later add auto-hide logic if required.
+    ========================================================= *@
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+    @* =========================================================
+        #region Form UI (Partial)
+        - Reuses the same form for Create/Edit.
+        - Contains dropdowns + items table + action buttons.
+        ========================================================= *@
+    @Html.Partial("_BillFormPartial", Model)
+
+    @* =========================================================
+        #region Scripts
+        - Keep all JS inside scripts section so it renders at the bottom.
+        - IMPORTANT: Load jQuery only once (preferably in _Layout).
+        ========================================================= *@
+    @section scripts {
+
+        @* If jQuery is already in _Layout.cshtml, remove this line *@
+        <script src="~/Scripts/jquery-1.10.2.min.js"></script>
+
+        <script>
+        // =========================================================
+        // #region Calculations: Total Amount
+        // - Recalculate bill total from existing table rows.
+        // =========================================================
+        function recalcTotal() {
+            var total = 0;
+            $("#itemsTable tbody tr").each(function () {
+                var lt = parseFloat($(this).find(".lineTotal").text() || "0");
+                total += lt;
+            });
+            $("#TotalAmount").val(total.toFixed(2));
+        }
+
+        // =========================================================
+        // #region ModelBinder Support: Reindex Rows
+        // - Keeps Items[index].Field correct for MVC model binding.
+        // - Required after deleting rows.
+        // =========================================================
+        function reindexRows() {
+            $("#itemsTable tbody tr").each(function (idx) {
+                $(this).find(".rowNo").text(idx + 1);
+
+                $(this).find("input, select").each(function () {
+                    var name = $(this).attr("name");
+                    if (!name) return;
+
+                    name = name.replace(/Items\[\d+\]/g, "Items[" + idx + "]");
+                    $(this).attr("name", name);
+                });
+            });
+        }
+
+        // =========================================================
+        // #region Silent Validation UI (No Alerts)
+        // - No popup messages.
+        // - Invalid fields are highlighted using Bootstrap is-invalid class.
+        // =========================================================
+        function markInvalid($el) { $el.addClass("is-invalid"); }
+        function clearInvalid() { $("#StoreId,#ProductId,#ReqQty").removeClass("is-invalid"); }
+
+        // remove invalid styling when user edits
+        $(document).on("change keyup", "#StoreId,#ProductId,#ReqQty", function () {
+            $(this).removeClass("is-invalid");
+        });
+
+        // =========================================================
+        // #region Store Change -> Load Products (AJAX JSON)
+        // - When store changes, fetch products from server.
+        // - Clears stock/price fields.
+        // =========================================================
+        $("#StoreId").change(function () {
+            var storeId = $(this).val();
+
+            $("#ProductId").html('<option value="">-- اختر المنتج --</option>');
+            $("#StockQty").val("");
+            $("#Price").val("");
+
+            if (!storeId) return;
+
+            $.getJSON('@Url.Action("GetProductsByStore","Bill")', { storeId: storeId })
+                .done(function (list) {
+                    var opt = '<option value="">-- اختر المنتج --</option>';
+                    $.each(list, function (i, x) {
+                        opt += '<option value="' + x.id + '">' + x.name + '</option>';
+                    });
+                    $("#ProductId").html(opt);
+                });
+        });
+
+        // =========================================================
+        // #region Product Change -> Load Stock + Price (AJAX JSON)
+        // - When product changes, fetch stock & price from server.
+        // - Silent behavior (no alerts).
+        // =========================================================
+        $("#ProductId").change(function () {
+            var storeId = $("#StoreId").val();
+            var productId = $(this).val();
+
+            $("#StockQty").val("");
+            $("#Price").val("");
+
+            if (!storeId || !productId) return;
+
+            $.getJSON('@Url.Action("GetProductInfo","Bill")', { storeId: storeId, productId: productId })
+                .done(function (r) {
+                    if (!r.ok) return;
+
+                    $("#StockQty").val(parseFloat(r.stockQty).toFixed(2));
+                    $("#Price").val(parseFloat(r.price).toFixed(2));
+                });
+        });
+
+        // =========================================================
+        // #region Add Item Row (NO MESSAGES)
+        // - Adds a row to the bill items table.
+        // - Silent validation (highlight only).
+        // - Prevent duplicate product addition.
+        // =========================================================
+        $("#btnAdd").click(function () {
+            clearInvalid();
+
+            var storeId = $("#StoreId").val();
+            var productId = $("#ProductId").val();
+            var productName = $("#ProductId option:selected").text();
+            var stockQty = parseFloat($("#StockQty").val() || "0");
+            var price = parseFloat($("#Price").val() || "0");
+            var qty = parseFloat($("#ReqQty").val() || "0");
+
+            var ok = true;
+
+            if (!storeId) { markInvalid($("#StoreId")); ok = false; }
+            if (!productId) { markInvalid($("#ProductId")); ok = false; }
+            if (!(qty > 0)) { markInvalid($("#ReqQty")); ok = false; }
+
+            if (ok && qty > stockQty) {
+                markInvalid($("#ReqQty"));
+                ok = false;
+            }
+
+            // prevent duplicates silently
+            if (ok) {
+                var exists = false;
+                $("#itemsTable tbody .hProductId").each(function () {
+                    if ($(this).val() == productId) exists = true;
+                });
+                if (exists) {
+                    markInvalid($("#ProductId"));
+                    ok = false;
+                }
+            }
+
+            if (!ok) return;
+
+            var idx = $("#itemsTable tbody tr").length;
+            var lineTotal = price * qty;
+
+            var row = ''
+                + '<tr>'
+                + '  <td class="rowNo">' + (idx + 1) + '</td>'
+                + '  <td>'
+                + '     <input type="hidden" class="hProductId" name="Items[' + idx + '].ProductId" value="' + productId + '" />'
+                + '     <span class="pName">' + productName + '</span>'
+                + '  </td>'
+                + '  <td>'
+                + '     <input type="text" class="form-control txtPrice" name="Items[' + idx + '].Price" value="' + price.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+                + '  </td>'
+                + '  <td>'
+                + '     <input type="text" class="form-control txtQty" name="Items[' + idx + '].Qty" value="' + qty.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+                + '  </td>'
+                + '  <td class="lineTotal">' + lineTotal.toFixed(2) + '</td>'
+                + '  <td><button type="button" class="btn btn-danger btn-sm btnRemove">X</button></td>'
+                + '</tr>';
+
+            $("#itemsTable tbody").append(row);
+
+            // keep product selected (no reset)
+            $("#StockQty").val("");
+            $("#Price").val("");
+            $("#ReqQty").val("");
+
+            recalcTotal();
+        });
+
+        // =========================================================
+        // #region Remove Item Row
+        // - Deletes row then reindexes + recalculates totals.
+        // =========================================================
+        $(document).on("click", ".btnRemove", function () {
+            $(this).closest("tr").remove();
+            reindexRows();
+            recalcTotal();
+        });
+
+        // =========================================================
+        // #region Init
+        // - Recalc totals on page load.
+        // - If store already selected (Edit screen), load products.
+        // =========================================================
+        $(function () {
+            recalcTotal();
+
+            var storeId = $("#StoreId").val();
+            if (storeId) {
+                $("#StoreId").trigger("change");
+            }
+        });
+        </script>
+    }

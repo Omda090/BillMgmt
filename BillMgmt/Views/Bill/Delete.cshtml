@@ -1,0 +1,43 @@
+﻿@model BillMgmt.Models.Bill.Bill
+@{
+    ViewBag.Title = "Delete Bill";
+}
+
+<h2>Delete Bill</h2>
+
+<div class="alert alert-warning">
+    هل أنت متأكد أنك تريد حذف هذه الفاتورة؟
+    <br />
+    سيتم حذف جميع البنود (Items) المرتبطة بها أيضاً.
+</div>
+
+<table class="table table-bordered">
+    <tr>
+        <th>BillId</th>
+        <td>@Model.BillId</td>
+    </tr>
+    <tr>
+        <th>Date</th>
+        <td>@Model.BillDate.ToString("yyyy-MM-dd")</td>
+    </tr>
+    <tr>
+        <th>Customer</th>
+        <td>@Model.Customer.CustomerName</td>
+    </tr>
+    <tr>
+        <th>Store</th>
+        <td>@Model.Store.StoreName</td>
+    </tr>
+    <tr>
+        <th>Total</th>
+        <td>@Model.TotalAmount.ToString("0.00")</td>
+    </tr>
+</table>
+
+@using (Html.BeginForm("Delete", "Bill", new { id = Model.BillId }, FormMethod.Post))
+{
+    @Html.AntiForgeryToken()
+
+    <a href="@Url.Action("Index","Bill")" class="btn btn-default">Cancel</a>
+    <button type="submit" class="btn btn-danger">Confirm Delete</button>
+}

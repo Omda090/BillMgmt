@@ -1,0 +1,219 @@
+using BillMgmt.Data;
+using BillMgmt.Models.ViewModels;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using System.Data.Entity;
+using BillMgmt.Models.Bill;
+using System.Threading.Tasks;
+
+
+namespace BillMgmt.Controllers
+{
+    public class BillController : Controller
+    {
+
+        private readonly AppDbContext _db = new AppDbContext();
+
+        public ActionResult Index()
+        {
+            var list = _db.Bills.AsNoTracking()
+                .Include(b => b.Customer)
+                .Include(b => b.Store)
+                .OrderByDescending(b => b.BillId)
+                .Select(b => new BillIndexVm
+                {
+                    BillId = b.BillId,
+                    BillDate = b.BillDate,
+                    CustomerName = b.Customer.CustomerName,
+                    StoreName = b.Store.StoreName,
+                    TotalAmount = b.TotalAmount,
+
+                    // ✅ Sum of quantities in items
+                   TotalQty = b.Items.Sum(i => (decimal?)i.Qty) ?? 0m
+                })
+                .ToList();
+
+            return View(list);
+        }
+
+
+
+        // GET: Bills/Create
+        public ActionResult Create()
+        {
+            var vm = new BillVm
+            {
+                Customers = _db.Customers.AsNoTracking()
+                    .OrderBy(x => x.CustomerName)
+                    .Select(x => new SelectListItem { Value = x.CustomerId.ToString(), Text = x.CustomerName })
+                    .ToList(),
+
+                Stores = _db.Stores.AsNoTracking()
+                    .OrderBy(x => x.StoreName)
+                    .Select(x => new SelectListItem { Value = x.StoreId.ToString(), Text = x.StoreName })
+                    .ToList()
+            };
+
+            return View(vm);
+        }
+
+        // GET: Bills/Edit/5
+        public ActionResult Edit(int id)
+        {
+            var bill = _db.Bills.AsNoTracking()
+                .Include(b => b.Items.Select(i => i.Product))
+                .FirstOrDefault(b => b.BillId == id);
+
+            if (bill == null) return HttpNotFound();
+
+            var vm = new BillVm
+            {
+                BillId = bill.BillId,
+                CustomerId = bill.CustomerId,
+                StoreId = bill.StoreId,
+                TotalAmount = bill.TotalAmount,
+
+                Customers = _db.Customers.OrderBy(x => x.CustomerName)
+                    .Select(x => new SelectListItem { Value = x.CustomerId.ToString(), Text = x.CustomerName })
+                    .ToList(),
+
+                Stores = _db.Stores.OrderBy(x => x.StoreName)
+                    .Select(x => new SelectListItem { Value = x.StoreId.ToString(), Text = x.StoreName })
+                    .ToList(),
+
+                Items = bill.Items.Select(i => new BillItemVm
+                {
+                    ProductId = i.ProductId,
+                    ProductName = i.Product.ProductName,
+                    Price = i.Price,
+                    Qty = i.Qty
+                }).ToList()
+            };
+
+            //  return View("BillForm", vm);
+            return View(vm); 
+        }
+
+        // POST: Bills/Save
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Save(BillVm vm, string postAction)
+        {
+            // validation: only add error when no items
+            if (vm.Items == null || !vm.Items.Any())
+                ModelState.AddModelError("", "يجب إضافة عنصر واحد على الأقل.");
+
+            if (!ModelState.IsValid)
+            {
+                
+                vm.Customers = _db.Customers.OrderBy(x => x.CustomerName)
+                    .Select(x => new SelectListItem { Value = x.CustomerId.ToString(), Text = x.CustomerName })
+                    .ToList();
+
+                vm.Stores = _db.Stores.OrderBy(x => x.StoreName)
+                    .Select(x => new SelectListItem { Value = x.StoreId.ToString(), Text = x.StoreName })
+                    .ToList();
+
+                return vm.BillId.HasValue ? View("Edit", vm) : View("Create", vm);
+            }
+
+            // Total
+            var total = vm.Items.Sum(x => x.Price * x.Qty);
+
+            Bill bill;
+            if (vm.BillId.HasValue) // Edit
+            {
+                bill = _db.Bills.Include(b => b.Items).First(b => b.BillId == vm.BillId.Value);
+                bill.CustomerId = vm.CustomerId;
+                bill.StoreId = vm.StoreId;
+                bill.TotalAmount = total;
+
+                // Replace items 
+                _db.BillItems.RemoveRange(bill.Items);
+                bill.Items.Clear();
+
+                foreach (var it in vm.Items)
+                {
+                    bill.Items.Add(new BillItem
+                    {
+                        ProductId = it.ProductId,
+                        Price = it.Price,
+                        Qty = it.Qty
+                    });
+                }
+            }
+            else // Create
+            {
+                bill = new Bill
+                {
+                    CustomerId = vm.CustomerId,
+                    StoreId = vm.StoreId,
+                    BillDate = DateTime.Now,
+                    TotalAmount = total
+                };
+
+                foreach (var it in vm.Items)
+                {
+                    bill.Items.Add(new BillItem
+                    {
+                        ProductId = it.ProductId,
+                        Price = it.Price,
+                        Qty = it.Qty
+                    });
+                }
+
+                _db.Bills.Add(bill);
+            }
+
+            _db.SaveChanges();
+
+            TempData["Success"] = "تم حفظ الفاتورة بنجاح ✅";
+            if (string.Equals(postAction, "createNew", StringComparison.OrdinalIgnoreCase))
+            {
+                return RedirectToAction("Create");
+            }
+
+
+            return RedirectToAction("Index");
+        }
+
+        // =========================
+        // AJAX ENDPOINTS
+        // =========================
+        // GET: Bills/GetProductsByStore?storeId=1
+        public JsonResult GetProductsByStore(int storeId)
+        {
+            var products = _db.StoreProducts.AsNoTracking()
+                .Where(sp => sp.StoreId == storeId)
+                .Select(sp => new {
+                    id = sp.ProductId,
+                    name = sp.Product.ProductName
+                })
+                .OrderBy(x => x.name)
+                .ToList();
+
+            return Json(products, JsonRequestBehavior.AllowGet);
+        }
+
+        // GET: Bills/GetProductInfo?storeId=1&productId=2
+        public JsonResult GetProductInfo(int storeId, int productId)
+        {
+
+            var data = _db.StoreProducts
+                   .AsNoTracking()
+                   .Where(x => x.StoreId == storeId && x.ProductId == productId)
+                   .Select(x => new { x.StockQty, x.Price })
+                   .FirstOrDefault();
+
+            if (data == null)
+                return Json(new { ok = false }, JsonRequestBehavior.AllowGet);
+
+            return Json(new { ok = true, stockQty = data.StockQty, price = data.Price },
+                JsonRequestBehavior.AllowGet);
+        }
+
+    }
+}

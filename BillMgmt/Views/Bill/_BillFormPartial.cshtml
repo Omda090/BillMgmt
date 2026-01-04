@@ -1,0 +1,336 @@
+﻿@model BillMgmt.Models.ViewModels.BillVm
+
+@* =========================================================
+    #region Form (POST to Save)
+    - Uses Html.BeginForm => FormPost (NOT Ajax) to save data.
+    - AntiForgeryToken enabled.
+    - If editing => include BillId hidden input.
+    ========================================================= *@
+@using (Html.BeginForm("Save", "Bill", FormMethod.Post, new { id = "billForm" }))
+{
+    @*@Html.AntiForgeryToken()
+
+    if (Model.BillId.HasValue)
+    {
+        @Html.HiddenFor(x => x.BillId)
+    }*@
+
+    @* =========================================================
+        Security: CSRF Protection
+        - Generates anti-forgery token for POST request protection.
+        - Must match [ValidateAntiForgeryToken] on Save action.
+        ========================================================= *@
+    @Html.AntiForgeryToken()
+
+    @* =====================  CHANGED PART (organized) =====================
+        Edit support:
+        - When BillId exists => send it back as hidden input.
+        - Server uses it to decide Edit vs Create.
+        ===================================================================== *@
+    <div class="d-none">
+        @if (Model?.BillId != null)
+        {
+            @Html.HiddenFor(x => x.BillId)
+        }
+    </div>
+
+    @* =========================================================
+        #region Header Section (Customer / Store / Total)
+        ========================================================= *@
+    <div style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;gap:12px;align-items:center;">
+            <div>
+                <label>عملاء</label><br />
+               @Html.DropDownListFor(m => m.CustomerId, Model.Customers, "-- اختر العميل --",
+        new { @class = "form-control", style = "width:220px;", id = "CustomerId" })
+            @Html.ValidationMessageFor(m => m.CustomerId, "", new { @class = "text-danger" })
+
+            </div>
+
+            <div>
+                <label>مخازن</label><br />
+                @Html.DropDownListFor(m => m.StoreId, Model.Stores, "-- اختر المخزن --",
+        new { @class = "form-control", id = "StoreId", style = "width:220px;" })
+                @Html.ValidationMessageFor(m => m.StoreId, "", new { @class = "text-danger" })
+            </div>
+
+            <div>
+                <label>اجمالى الفاتورة</label><br />
+                <input type="text" id="TotalAmount" class="form-control"
+                       style="width:160px;background:#f7f7f7;" readonly
+                       value="@Model.TotalAmount.ToString("0.00")" />
+            </div>
+        </div>
+    </div>
+
+    @* =========================================================
+        #region Details Entry (Select product + qty + add button)
+        - Product dropdown is filled by AJAX when store changes.
+        - Stock/Price loaded by AJAX when product changes.
+        ========================================================= *@
+    <div style="border:1px solid #ccc;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;gap:12px;align-items:end;">
+            <div>
+                <label>المنتج</label><br />
+                <select id="ProductId" class="form-control" style="width:280px;">
+                    <option value="">-- اختر المخزن أولاً --</option>
+                </select>
+            </div>
+
+            <div>
+                <label>الرصيد بالمخزن</label><br />
+                <input type="text" id="StockQty" class="form-control"
+                       style="width:140px;background:#f7f7f7;" readonly />
+            </div>
+
+            <div>
+                <label>السعر</label><br />
+                <input type="text" id="Price" class="form-control"
+                       style="width:140px;background:#f7f7f7;" readonly />
+            </div>
+
+            <div>
+                <label>الكمية المطلوبة</label><br />
+                <input type="number" step="0.01" min="0" id="ReqQty"
+                       class="form-control" style="width:140px;" />
+            </div>
+
+            <div>
+                <button type="button" id="btnAdd" class="btn btn-success">Add</button>
+            </div>
+        </div>
+    </div>
+
+    @* =========================================================
+        #region Items Table (Model Binder Ready)
+        - Important: name="Items[i].Field" so MVC binds correctly.
+        - Existing items appear in Edit mode.
+        ========================================================= *@
+    <div style="border:1px solid #ccc;padding:12px;">
+        <table class="table table-bordered" id="itemsTable">
+            <thead>
+                <tr>
+                    <th style="width:60px;">#</th>
+                    <th>المنتج</th>
+                    <th style="width:120px;">السعر</th>
+                    <th style="width:120px;">الكمية</th>
+                    <th style="width:120px;">الإجمالى</th>
+                    <th style="width:80px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Items != null && Model.Items.Any())
+                {
+                    for (int i = 0; i < Model.Items.Count; i++)
+                    {
+                        <tr>
+                            <td class="rowNo">@(i + 1)</td>
+                            <td>
+                                @Html.Hidden($"Items[{i}].ProductId", Model.Items[i].ProductId, new { @class = "hProductId" })
+                                <span class="pName">@Model.Items[i].ProductName</span>
+                            </td>
+                            <td>
+                                @Html.TextBox($"Items[{i}].Price", Model.Items[i].Price.ToString("0.00"),
+                                    new { @class = "form-control txtPrice", @readonly = "readonly", style = "background:#f7f7f7;" })
+                            </td>
+                            <td>
+                                @Html.TextBox($"Items[{i}].Qty", Model.Items[i].Qty.ToString("0.00"),
+                                    new { @class = "form-control txtQty", @readonly = "readonly", style = "background:#f7f7f7;" })
+                            </td>
+                            <td class="lineTotal">@((Model.Items[i].Price * Model.Items[i].Qty).ToString("0.00"))</td>
+                            <td><button type="button" class="btn btn-danger btn-sm btnRemove">X</button></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        @* =========================================================
+            #region Action Buttons
+            ========================================================= *@
+        <a href="@Url.Action("Index","Bill")" class="btn btn-default">Back to Index</a>
+        <button type="submit" name="postAction" value="save" class="btn btn-primary">Save</button>
+    </div>
+}
+
+@* =========================================================
+    #region Scripts
+    IMPORTANT:
+    - Put scripts inside @section scripts (recommended)
+    - Load jQuery only ONCE (Layout is better).
+    ========================================================= *@
+@section scripts {
+    @* If your Layout already loads jQuery, remove this line *@
+    <script src="~/Scripts/jquery-1.10.2.min.js"></script>
+
+    <script>
+        // =========================
+        // Helpers: totals + reindex
+        // =========================
+        function recalcTotal() {
+            var total = 0;
+            $("#itemsTable tbody tr").each(function () {
+                var lt = parseFloat($(this).find(".lineTotal").text() || "0");
+                total += lt;
+            });
+            $("#TotalAmount").val(total.toFixed(2));
+        }
+
+        function reindexRows() {
+            $("#itemsTable tbody tr").each(function (idx) {
+                $(this).find(".rowNo").text(idx + 1);
+
+                // Ensure MVC binder names Items[0], Items[1]...
+                $(this).find("input, select").each(function () {
+                    var name = $(this).attr("name");
+                    if (!name) return;
+
+                    name = name.replace(/Items\[\d+\]/g, "Items[" + idx + "]");
+                    $(this).attr("name", name);
+                });
+            });
+        }
+
+        // =========================
+        // Silent validation UI
+        // =========================
+        function markInvalid($el) { $el.addClass("is-invalid"); }
+
+        // UPDATED: include CustomerId also (and same ids as screenshot)
+        function clearInvalid() {
+            $("#CustomerId,#StoreId,#ProductId,#ReqQty").removeClass("is-invalid");
+        }
+
+
+        // THIS is the block in your screenshot (where to add it)
+        // Remove invalid highlight when user changes input
+        $(document).on("change keyup", "#CustomerId,#StoreId,#ProductId,#ReqQty", function () {
+            $(this).removeClass("is-invalid");
+        });
+
+        // =========================
+        // Store -> load products
+        // =========================
+        $("#StoreId").change(function () {
+            var storeId = $(this).val();
+
+            // Professional placeholder text
+            $("#ProductId").html('<option value="">-- اختر المنتج --</option>');
+            $("#StockQty").val("");
+            $("#Price").val("");
+
+            if (!storeId) return;
+
+            $.getJSON('@Url.Action("GetProductsByStore","Bill")', { storeId: storeId })
+                .done(function (list) {
+                    var opt = '<option value="">-- اختر المنتج --</option>';
+                    $.each(list, function (i, x) {
+                        opt += '<option value="' + x.id + '">' + x.name + '</option>';
+                    });
+                    $("#ProductId").html(opt);
+                });
+        });
+
+        // =========================
+        // Product -> load stock/price
+        // =========================
+        $("#ProductId").change(function () {
+            var storeId = $("#StoreId").val();
+            var productId = $(this).val();
+
+            $("#StockQty").val("");
+            $("#Price").val("");
+
+            if (!storeId || !productId) return;
+
+            $.getJSON('@Url.Action("GetProductInfo","Bill")', { storeId: storeId, productId: productId })
+                .done(function (r) {
+                    if (!r.ok) return; // no alerts
+                    $("#StockQty").val(parseFloat(r.stockQty).toFixed(2));
+                    $("#Price").val(parseFloat(r.price).toFixed(2));
+                });
+        });
+
+        // =========================
+        // Add item row (NO messages)
+        // =========================
+        $("#btnAdd").click(function () {
+            clearInvalid();
+
+            var storeId = $("#StoreId").val();
+            var productId = $("#ProductId").val();
+            var productName = $("#ProductId option:selected").text();
+            var stockQty = parseFloat($("#StockQty").val() || "0");
+            var price = parseFloat($("#Price").val() || "0");
+            var qty = parseFloat($("#ReqQty").val() || "0");
+
+            var ok = true;
+
+            if (!storeId) { markInvalid($("#StoreId")); ok = false; }
+            if (!productId) { markInvalid($("#ProductId")); ok = false; }
+            if (!(qty > 0)) { markInvalid($("#ReqQty")); ok = false; }
+            if (ok && qty > stockQty) { markInvalid($("#ReqQty")); ok = false; }
+
+            // prevent duplicates
+            if (ok) {
+                var exists = false;
+                $("#itemsTable tbody .hProductId").each(function () {
+                    if ($(this).val() == productId) exists = true;
+                });
+                if (exists) { markInvalid($("#ProductId")); ok = false; }
+            }
+
+            if (!ok) return;
+
+            var idx = $("#itemsTable tbody tr").length;
+            var lineTotal = price * qty;
+
+            var row = ''
+                + '<tr>'
+                + '  <td class="rowNo">' + (idx + 1) + '</td>'
+                + '  <td>'
+                + '     <input type="hidden" class="hProductId" name="Items[' + idx + '].ProductId" value="' + productId + '" />'
+                + '     <span class="pName">' + productName + '</span>'
+                + '  </td>'
+                + '  <td>'
+                + '     <input type="text" class="form-control txtPrice" name="Items[' + idx + '].Price" value="' + price.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+                + '  </td>'
+                + '  <td>'
+                + '     <input type="text" class="form-control txtQty" name="Items[' + idx + '].Qty" value="' + qty.toFixed(2) + '" readonly style="background:#f7f7f7;" />'
+                + '  </td>'
+                + '  <td class="lineTotal">' + lineTotal.toFixed(2) + '</td>'
+                + '  <td><button type="button" class="btn btn-danger btn-sm btnRemove">X</button></td>'
+                + '</tr>';
+
+            $("#itemsTable tbody").append(row);
+
+            // keep product selected (no reset)
+            $("#StockQty").val("");
+            $("#Price").val("");
+            $("#ReqQty").val("");
+
+            recalcTotal();
+        });
+
+        // =========================
+        // Remove row
+        // =========================
+        $(document).on("click", ".btnRemove", function () {
+            $(this).closest("tr").remove();
+            reindexRows();
+            recalcTotal();
+        });
+
+        // =========================
+        // Init
+        // =========================
+        $(function () {
+            recalcTotal();
+
+            var storeId = $("#StoreId").val();
+            if (storeId) {
+                $("#StoreId").trigger("change");
+            }
+        });
+    </script>
+}

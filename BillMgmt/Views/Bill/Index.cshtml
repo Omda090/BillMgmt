@@ -1,0 +1,102 @@
+﻿
+@model IEnumerable<BillMgmt.Models.ViewModels.BillIndexVm>
+
+@{
+    ViewBag.Title = "Bills";
+}
+
+<div class="container-fluid">
+
+    <!-- =========================
+         Header + Action Button
+         ========================= -->
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="m-0">Bills</h2>
+
+        @Html.ActionLink("Create New Bill", "Create", null, new { @class = "btn btn-success" })
+    </div>
+
+    <!-- =========================
+         Success Message (TempData)
+         ========================= -->
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible" role="alert" style="margin-bottom:15px;">
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            @TempData["Success"]
+        </div>
+    }
+
+    <!-- =========================
+         Table Card
+         ========================= -->
+    <div class="panel panel-default">
+        <div class="panel-heading" style="display:flex;align-items:center;justify-content:space-between;">
+            <strong>All Bills</strong>
+            <span class="text-muted">Count: @(Model?.Count() ?? 0)</span>
+        </div>
+
+        <div class="panel-body" style="padding:0;">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover m-0">
+                    <thead style="background:#f5f5f5;">
+                        <tr>
+                            <th style="width:90px;">BillId</th>
+                            <th style="width:120px;">Date</th>
+                            <th>Customer</th>
+                            <th>Store</th>
+                            <th class="text-right" style="width:120px;">Total</th>
+                            <th class="text-right" style="width:120px;">Total Qty</th>
+                            <th style="width:160px;" class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @if (Model == null || !Model.Any())
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center text-muted" style="padding:25px;">
+                                    No bills found.
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            foreach (var x in Model)
+                            {
+                                <tr>
+                                    <td><strong>@x.BillId</strong></td>
+                                    <td>@x.BillDate.ToString("yyyy-MM-dd")</td>
+                                    <td>@x.CustomerName</td>
+                                    <td>@x.StoreName</td>
+
+                                    <td class="text-right">
+                                        <span class="label label-primary" style="display:inline-block;min-width:80px;">
+                                            @x.TotalAmount.ToString("0.00")
+                                        </span>
+                                    </td>
+
+                                    <td class="text-right">
+                                        <span class="label label-info" style="display:inline-block;min-width:80px;">
+                                            @x.TotalQty.ToString("0.00")
+                                        </span>
+                                    </td>
+
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            @Html.ActionLink("Edit", "Edit", new { id = x.BillId }, new { @class = "btn btn-primary" })
+                                            @Html.ActionLink("Delete", "Delete", new { id = x.BillId }, new { @class = "btn btn-danger" })
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
