@@ -48,17 +48,18 @@
         <div style="display:flex;gap:12px;align-items:center;">
             <div>
                 <label>عملاء</label><br />
-               @Html.DropDownListFor(m => m.CustomerId, Model.Customers, "-- اختر العميل --",
-        new { @class = "form-control", style = "width:220px;", id = "CustomerId" })
+                <div class="input-group" style="width:260px;">
+                    @Html.DropDownListFor(m => m.CustomerId, Model.Customers, "-- اختر العميل --",
+        new { @class = "form-control", id = "CustomerId" })
 
-                <span class="input-group-btn">
-                    <button type="button" id="btnAddCustomer" class="btn btn-success" title="Add Customer">
-                        +
-                    </button>
-                </span>
+                    <span class="input-group-btn">
+                        <button type="button" id="btnAddCustomer" class="btn btn-success" title="Add Customer">
+                            +
+                        </button>
+                    </span>
+                </div>
 
-            @Html.ValidationMessageFor(m => m.CustomerId, "", new { @class = "text-danger" })
-
+                @Html.ValidationMessageFor(m => m.CustomerId, "", new { @class = "text-danger" })
             </div>
 
             <div>

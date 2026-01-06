@@ -475,7 +475,7 @@ namespace BillMgmt.Controllers
 
         //CustomerModal:
         [HttpGet]
-        public ActionResult CustomerCreateModal()
+        public async Task<ActionResult> CustomerCreateModal()
         {
             return PartialView("_CustomerCreateModal", new CustomerCreateVm());
         }
@@ -508,7 +508,6 @@ namespace BillMgmt.Controllers
                 name = customer.CustomerName
             });
         }
-
 
         #region Dispose
 
