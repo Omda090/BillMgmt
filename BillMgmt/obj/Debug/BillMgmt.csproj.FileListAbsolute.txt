@@ -64,8 +64,11 @@ H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\bin\Micro
 H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\bin\Microsoft.Owin.Security.Google.xml
 H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\bin\Microsoft.Owin.Security.Twitter.xml
 H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\bin\Microsoft.Owin.Security.MicrosoftAccount.xml
-H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.csprojResolveAssemblyReference.cache
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.Migrations.firstDB.resources
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.Migrations.sec.resources
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.csproj.GenerateResource.Cache
 H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.dll
 H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.pdb
-H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.Migrations.firstDB.resources
-H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.csproj.GenerateResource.Cache
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.Migrations.third.resources
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.csprojResolveAssemblyReference.cache
+H:\MohammedAbdulrahman.Remote\ApplicationSource\Task\BillMgmt\BillMgmt\obj\Debug\BillMgmt.Migrations.AddCustomer.resources

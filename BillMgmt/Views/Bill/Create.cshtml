@@ -34,8 +34,6 @@
         ========================================================= *@
     @section scripts {
 
-        @* If jQuery is already in _Layout.cshtml, remove this line *@
-        <script src="~/Scripts/jquery-1.10.2.min.js"></script>
 
         <script>
         // =========================================================
@@ -75,8 +73,7 @@
         // - Highlight invalid inputs using Bootstrap is-invalid class.
         // - No popup messages (as per your requirement).
         // =========================================================
-        function markInvalid($el) { $el.addClass("is-invalid"); }
-        function clearInvalid() { $("#StoreId,#ProductId,#ReqQty").removeClass("is-invalid"); }
+      
 
         // remove invalid highlight when user changes input
         $(document).on("change keyup", "#StoreId,#ProductId,#ReqQty", function () {
@@ -137,7 +134,7 @@
         // - Prevent duplicates.
         // =========================================================
         $("#btnAdd").click(function () {
-            clearInvalid();
+           // clearInvalid();
 
             var storeId = $("#StoreId").val();
             var productId = $("#ProductId").val();
@@ -224,5 +221,55 @@
                 $("#StoreId").trigger("change");
             }
         });
+
+            //Adding Customers :
+        // فتح مودال إضافة عميل
+        $(document).on("click", "#btnAddCustomer", function () {
+
+            $.get('@Url.Action("CustomerCreateModal","Bill")')
+              .done(function (html) {
+                  $("#customerModalContainer").html(html);
+                  // ✅ بدل الاستدعاء المباشر
+                  if (!$.fn.modal) {
+                      console.error("Bootstrap Modal plugin not loaded.");
+                      alert("Bootstrap Modal غير محمّل. تأكد من تحميل bootstrap.min.js بعد jQuery في _Layout.");
+                      return;
+                  }
+                  $("#customerModal").modal("show");
+              });
+        });
+
+        // إرسال فورم العميل بالـ Ajax
+        $(document).on("submit", "#customerForm", function (e) {
+            e.preventDefault();
+
+            var $form = $(this);
+
+            $.ajax({
+                url: $form.attr("action"),
+                type: "POST",
+                data: $form.serialize(),
+                success: function (res) {
+
+                    // لو رجع JSON نجاح
+                    if (res && res.ok) {
+                        // أضف العميل الجديد للـ dropdown واختره
+                        $("#CustomerId").append(
+                            $('<option/>', { value: res.id, text: res.name })
+                        );
+
+                        $("#CustomerId").val(res.id).trigger("change");
+
+                        $("#customerModal").modal("hide");
+                        return;
+                    }
+
+                    // لو رجع Partial HTML (فيه validation errors)
+                    $("#customerModalContainer").html(res);
+                    $("#customerModal").modal("show");
+                }
+            });
+        });
+
         </script>
     }

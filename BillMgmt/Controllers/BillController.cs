@@ -1,6 +1,7 @@
 ﻿using BillMgmt.Data;
 using BillMgmt.Models.Bill;
 using BillMgmt.Models.ViewModels;
+using BillMgmt.Models.ViewModels.Customer;
 using System;
 using System.Collections.Generic;
 using System.Data.Entity;
@@ -178,18 +179,15 @@ namespace BillMgmt.Controllers
 
             #region Items Validation (Required + Clean)
 
-            // Ensure list exists
             vm.Items = vm.Items ?? new List<BillItemVm>();
 
-            // Must have at least 1 item
             if (!vm.Items.Any())
-                ModelState.AddModelError("", "يجب إضافة عنصر واحد على الأقل.");
+                ModelState.AddModelError("Items", "يجب إضافة عنصر واحد على الأقل.");
 
             #endregion
 
             #region Business Validation (Products / Qty / Price / Duplicates / Store Stock)
 
-            // Only continue if Customer/Store exist
             if (vm.StoreId.HasValue && vm.Items.Any())
             {
                 // 1) prevent duplicate product ids in same bill
@@ -200,19 +198,19 @@ namespace BillMgmt.Controllers
                     .ToList();
 
                 if (duplicateProductIds.Any())
-                    ModelState.AddModelError("", "يوجد منتجات مكررة داخل الفاتورة. احذف التكرار ثم حاول مرة أخرى.");
+                    ModelState.AddModelError("Items", "يوجد منتجات مكررة داخل الفاتورة. احذف التكرار ثم حاول مرة أخرى.");
 
                 // 2) validate each item basic values
                 foreach (var it in vm.Items)
                 {
                     if (it.ProductId <= 0)
-                        ModelState.AddModelError("", "يوجد بند بدون منتج.");
+                        ModelState.AddModelError("Items", "يوجد بند بدون منتج.");
 
                     if (it.Qty <= 0)
-                        ModelState.AddModelError("", "يوجد بند بكمية غير صحيحة (يجب أن تكون أكبر من صفر).");
+                        ModelState.AddModelError("Items", "يوجد بند بكمية غير صحيحة (يجب أن تكون أكبر من صفر).");
 
                     if (it.Price < 0)
-                        ModelState.AddModelError("", "يوجد بند بسعر غير صحيح (لا يمكن أن يكون سالب).");
+                        ModelState.AddModelError("Items", "يوجد بند بسعر غير صحيح (لا يمكن أن يكون سالب).");
                 }
 
                 // 3) validate product exists in store + stock available (server-side)
@@ -222,32 +220,32 @@ namespace BillMgmt.Controllers
 
                     var productIds = vm.Items.Select(x => x.ProductId).Distinct().ToList();
 
-                    // get store products for these ids
                     var storeProducts = await _db.StoreProducts
                         .AsNoTracking()
                         .Where(sp => sp.StoreId == storeId && productIds.Contains(sp.ProductId))
                         .Select(sp => new { sp.ProductId, sp.StockQty, sp.Price })
                         .ToListAsync();
 
-                    // missing mapping => product not in store
                     var missing = productIds.Except(storeProducts.Select(s => s.ProductId)).ToList();
                     if (missing.Any())
-                        ModelState.AddModelError("", "يوجد منتج غير موجود داخل هذا المخزن.");
+                        ModelState.AddModelError("Items", "يوجد منتج غير موجود داخل هذا المخزن.");
 
-                    // check stock
+                    // UPDATED PART (StockQty == 0 + Qty > StockQty)
                     foreach (var it in vm.Items)
                     {
                         var sp = storeProducts.FirstOrDefault(x => x.ProductId == it.ProductId);
                         if (sp == null) continue;
 
-                        if (it.Qty > sp.StockQty)
+                        if (sp.StockQty <= 0)
                         {
-                            ModelState.AddModelError("",
+                            ModelState.AddModelError("Items",
+                                $"المنتج ({it.ProductId}) غير متوفر بالمخزن (الرصيد = 0).");
+                        }
+                        else if (it.Qty > sp.StockQty)
+                        {
+                            ModelState.AddModelError("Items",
                                 $"الكمية المطلوبة للمنتج ({it.ProductId}) أكبر من الرصيد الحالي بالمخزن.");
                         }
-
-                        // Optional policy: enforce price matches store price (if you want)
-                        // if (it.Price != sp.Price) { ... }
                     }
                 }
             }
@@ -299,8 +297,6 @@ namespace BillMgmt.Controllers
 
                     if (vm.BillId.HasValue)
                     {
-                        #region EDIT: Load Bill (tracking) + Replace items
-
                         bill = await _db.Bills
                             .Include(b => b.Items)
                             .FirstOrDefaultAsync(b => b.BillId == vm.BillId.Value);
@@ -308,12 +304,10 @@ namespace BillMgmt.Controllers
                         if (bill == null)
                             return HttpNotFound();
 
-                        // update header
                         bill.CustomerId = vm.CustomerId.Value;
                         bill.StoreId = vm.StoreId.Value;
                         bill.TotalAmount = total;
 
-                        // Replace items (remove old, add new)
                         _db.BillItems.RemoveRange(bill.Items);
                         bill.Items.Clear();
 
@@ -326,13 +320,9 @@ namespace BillMgmt.Controllers
                                 Qty = it.Qty
                             });
                         }
-
-                        #endregion
                     }
                     else
                     {
-                        #region CREATE: New Bill + Add items
-
                         bill = new Bill
                         {
                             CustomerId = vm.CustomerId.Value,
@@ -352,8 +342,6 @@ namespace BillMgmt.Controllers
                         }
 
                         _db.Bills.Add(bill);
-
-                        #endregion
                     }
 
                     await _db.SaveChangesAsync();
@@ -379,6 +367,7 @@ namespace BillMgmt.Controllers
 
             #endregion
         }
+
 
 
 
@@ -482,6 +471,42 @@ namespace BillMgmt.Controllers
                 return Json(new { ok = false }, JsonRequestBehavior.AllowGet);
 
             return Json(new { ok = true, stockQty = data.StockQty, price = data.Price }, JsonRequestBehavior.AllowGet);
+        }
+
+        //CustomerModal:
+        [HttpGet]
+        public ActionResult CustomerCreateModal()
+        {
+            return PartialView("_CustomerCreateModal", new CustomerCreateVm());
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<ActionResult> CreateCustomer(CustomerCreateVm vm)
+        {
+            if (!ModelState.IsValid)
+            {
+                // رجّع نفس partial مع أخطاء validation
+                return PartialView("_CustomerCreateModal", vm);
+            }
+
+            var customer = new Customer
+            {
+                CustomerName = vm.CustomerName,
+                Email = vm.Email,
+                PhoneNumber = vm.PhoneNumber,
+                City = vm.City
+            };
+
+            _db.Customers.Add(customer);
+            await _db.SaveChangesAsync();
+
+            return Json(new
+            {
+                ok = true,
+                id = customer.CustomerId,
+                name = customer.CustomerName
+            });
         }
 
 

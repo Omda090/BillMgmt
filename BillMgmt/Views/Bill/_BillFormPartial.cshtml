@@ -6,21 +6,28 @@
     - AntiForgeryToken enabled.
     - If editing => include BillId hidden input.
     ========================================================= *@
+<style>
+    /* Bootstrap 3 friendly invalid style */
+    .is-invalid {
+        border-color: #d9534f !important;
+        box-shadow: 0 0 0 0.2rem rgba(217,83,79,.15);
+    }
+
+       .form-group label { font-weight: 600; }
+    #btnAddCustomer { line-height: 1.2; }
+</style>
+
 @using (Html.BeginForm("Save", "Bill", FormMethod.Post, new { id = "billForm" }))
 {
-    @*@Html.AntiForgeryToken()
-
-    if (Model.BillId.HasValue)
-    {
-        @Html.HiddenFor(x => x.BillId)
-    }*@
-
     @* =========================================================
         Security: CSRF Protection
         - Generates anti-forgery token for POST request protection.
         - Must match [ValidateAntiForgeryToken] on Save action.
         ========================================================= *@
     @Html.AntiForgeryToken()
+    @* true معناها: يعرض الأخطاء العامة فقط (التي بدون key)
+    وأخطاء الحقول ستظهر بجانب الحقول عبر ValidationMessageFor *@
+    @Html.ValidationSummary(true, "", new { @class = "alert alert-danger", style = "margin-bottom:12px;" })
 
     @* =====================  CHANGED PART (organized) =====================
         Edit support:
@@ -43,6 +50,13 @@
                 <label>عملاء</label><br />
                @Html.DropDownListFor(m => m.CustomerId, Model.Customers, "-- اختر العميل --",
         new { @class = "form-control", style = "width:220px;", id = "CustomerId" })
+
+                <span class="input-group-btn">
+                    <button type="button" id="btnAddCustomer" class="btn btn-success" title="Add Customer">
+                        +
+                    </button>
+                </span>
+
             @Html.ValidationMessageFor(m => m.CustomerId, "", new { @class = "text-danger" })
 
             </div>
@@ -81,6 +95,8 @@
                 <label>الرصيد بالمخزن</label><br />
                 <input type="text" id="StockQty" class="form-control"
                        style="width:140px;background:#f7f7f7;" readonly />
+                <small id="StockQtyError" class="text-danger"
+                       style="display:none; margin-top:4px;"></small>
             </div>
 
             <div>
@@ -93,13 +109,16 @@
                 <label>الكمية المطلوبة</label><br />
                 <input type="number" step="0.01" min="0" id="ReqQty"
                        class="form-control" style="width:140px;" />
-            </div>
+                <small id="qtyError" class="text-danger" style="display:none;"></small>
+                        </div>
 
             <div>
                 <button type="button" id="btnAdd" class="btn btn-success">Add</button>
             </div>
         </div>
     </div>
+
+
 
     @* =========================================================
         #region Items Table (Model Binder Ready)
@@ -145,13 +164,19 @@
             </tbody>
         </table>
 
+        @Html.ValidationMessage("Items", new { @class = "text-danger", style = "display:block;margin-top:8px;" })
         @* =========================================================
             #region Action Buttons
             ========================================================= *@
         <a href="@Url.Action("Index","Bill")" class="btn btn-default">Back to Index</a>
         <button type="submit" name="postAction" value="save" class="btn btn-primary">Save</button>
     </div>
+
+
 }
+
+<div id="customerModalContainer"></div>
+
 
 @* =========================================================
     #region Scripts
@@ -160,10 +185,17 @@
     - Load jQuery only ONCE (Layout is better).
     ========================================================= *@
 @section scripts {
-    @* If your Layout already loads jQuery, remove this line *@
-    <script src="~/Scripts/jquery-1.10.2.min.js"></script>
+
 
     <script>
+        function showQtyError(msg) {
+            $("#qtyError").text(msg).show();
+        }
+        function clearQtyError() {
+            $("#qtyError").hide().text("");
+        }
+
+
         // =========================
         // Helpers: totals + reindex
         // =========================
@@ -194,18 +226,11 @@
         // =========================
         // Silent validation UI
         // =========================
-        function markInvalid($el) { $el.addClass("is-invalid"); }
-
-        // UPDATED: include CustomerId also (and same ids as screenshot)
-        function clearInvalid() {
-            $("#CustomerId,#StoreId,#ProductId,#ReqQty").removeClass("is-invalid");
-        }
 
 
-        // THIS is the block in your screenshot (where to add it)
-        // Remove invalid highlight when user changes input
         $(document).on("change keyup", "#CustomerId,#StoreId,#ProductId,#ReqQty", function () {
             $(this).removeClass("is-invalid");
+            clearQtyError();
         });
 
         // =========================
@@ -230,7 +255,6 @@
                     $("#ProductId").html(opt);
                 });
         });
-
         // =========================
         // Product -> load stock/price
         // =========================
@@ -241,47 +265,165 @@
             $("#StockQty").val("");
             $("#Price").val("");
 
+            clearStockQtyError();
+            clearReqQtyError();
+            $("#StockQty").removeClass("is-invalid");
+
             if (!storeId || !productId) return;
 
             $.getJSON('@Url.Action("GetProductInfo","Bill")', { storeId: storeId, productId: productId })
                 .done(function (r) {
-                    if (!r.ok) return; // no alerts
+                    if (!r || !r.ok) return;
                     $("#StockQty").val(parseFloat(r.stockQty).toFixed(2));
                     $("#Price").val(parseFloat(r.price).toFixed(2));
+
+
+
+                    // هنا: لو الرصيد = 0 خلي الرصيد نفسه يبقى invalid
+                    var stock = parseFloat(r.stockQty || "0");
+                    if (stock <= 0) {
+                        markInvalid($("#StockQty"));
+                    } else {
+                        $("#StockQty").removeClass("is-invalid");
+                    }
+
+                    if (parseFloat(r.stockQty) <= 0) {
+                        showStockQtyError("هذا المنتج غير متوفر بالمخزن (الرصيد = 0).");
+                    } else {
+                        clearStockQtyError();
+                    }
                 });
         });
-
+     
         // =========================
         // Add item row (NO messages)
         // =========================
+        //$("#btnadd").click(function () {
+        //    clearinvalid();
+
+        //    var storeid = $("#storeid").val();
+        //    var productid = $("#productid").val();
+        //    var productname = $("#productid option:selected").text();
+        //    var stockqty = parsefloat($("#stockqty").val() || "0");
+        //    var price = parsefloat($("#price").val() || "0");
+        //    var qty = parsefloat($("#reqqty").val() || "0");
+
+        //    var ok = true;
+
+        //    if (!storeid) { markinvalid($("#storeid")); ok = false; }
+        //    if (!productid) { markinvalid($("#productid")); ok = false; }
+        //    if (!(qty > 0)) { markinvalid($("#reqqty")); ok = false; }
+        //    if (ok && qty > stockqty) { markinvalid($("#reqqty")); ok = false; }
+
+        //    // prevent duplicates
+        //    if (ok) {
+        //        var exists = false;
+        //        $("#itemstable tbody .hproductid").each(function () {
+        //            if ($(this).val() == productid) exists = true;
+        //        });
+        //        if (exists) { markinvalid($("#productid")); ok = false; }
+        //    }
+
+        //    if (!ok) return;
+
+        //    var idx = $("#itemstable tbody tr").length;
+        //    var linetotal = price * qty;
+
+        //    var row = ''
+        //        + '<tr>'
+        //        + '  <td class="rowno">' + (idx + 1) + '</td>'
+        //        + '  <td>'
+        //        + '     <input type="hidden" class="hproductid" name="items[' + idx + '].productid" value="' + productid + '" />'
+        //        + '     <span class="pname">' + productname + '</span>'
+        //        + '  </td>'
+        //        + '  <td>'
+        //        + '     <input type="text" class="form-control txtprice" name="items[' + idx + '].price" value="' + price.tofixed(2) + '" readonly style="background:#f7f7f7;" />'
+        //        + '  </td>'
+        //        + '  <td>'
+        //        + '     <input type="text" class="form-control txtqty" name="items[' + idx + '].qty" value="' + qty.tofixed(2) + '" readonly style="background:#f7f7f7;" />'
+        //        + '  </td>'
+        //        + '  <td class="linetotal">' + linetotal.tofixed(2) + '</td>'
+        //        + '  <td><button type="button" class="btn btn-danger btn-sm btnremove">x</button></td>'
+        //        + '</tr>';
+
+        //    $("#itemstable tbody").append(row);
+
+        //    // keep product selected (no reset)
+        //    $("#stockqty").val("");
+        //    $("#price").val("");
+        //    $("#reqqty").val("");
+
+        //    recalctotal();
+        //});
+
         $("#btnAdd").click(function () {
             clearInvalid();
 
             var storeId = $("#StoreId").val();
             var productId = $("#ProductId").val();
             var productName = $("#ProductId option:selected").text();
-            var stockQty = parseFloat($("#StockQty").val() || "0");
-            var price = parseFloat($("#Price").val() || "0");
-            var qty = parseFloat($("#ReqQty").val() || "0");
+
+            var stockQty = parseFloat($("#StockQty").val());
+            var price = parseFloat($("#Price").val());
+            var qty = parseFloat($("#ReqQty").val());
+
+            // لو القيم فاضية تتحول NaN
+            if (isNaN(stockQty)) stockQty = 0;
+            if (isNaN(price)) price = 0;
+            if (isNaN(qty)) qty = 0;
 
             var ok = true;
 
-            if (!storeId) { markInvalid($("#StoreId")); ok = false; }
-            if (!productId) { markInvalid($("#ProductId")); ok = false; }
-            if (!(qty > 0)) { markInvalid($("#ReqQty")); ok = false; }
-            if (ok && qty > stockQty) { markInvalid($("#ReqQty")); ok = false; }
+            // 1) لازم مخزن
+            if (!storeId) {
+                markInvalid($("#StoreId"));
+                ok = false;
+            }
 
-            // prevent duplicates
+            // 2) لازم منتج
+            if (!productId) {
+                markInvalid($("#ProductId"));
+                ok = false;
+            }
+
+            // 3) لازم تكون بيانات المنتج اتجابت (رصيد/سعر)
+            // أهم شرط: لو الرصيد = 0 ممنوع تضيف
+            if (ok && stockQty <= 0) {
+                markInvalid($("#ProductId"));
+                showQtyError("هذا المنتج غير متوفر في المخزن (الرصيد = 0).");
+                ok = false;
+            }
+
+            // 4) الكمية لازم > 0
+            if (ok && !(qty > 0)) {
+                markInvalid($("#ReqQty"));
+                showQtyError("أدخل كمية أكبر من صفر.");
+                ok = false;
+            }
+
+            // 5) الكمية لا تتجاوز الرصيد
+            if (ok && qty > stockQty) {
+                markInvalid($("#ReqQty"));
+                showQtyError("الكمية المطلوبة أكبر من الرصيد بالمخزن.");
+                ok = false;
+            }
+
+            // 6) منع التكرار
             if (ok) {
                 var exists = false;
                 $("#itemsTable tbody .hProductId").each(function () {
                     if ($(this).val() == productId) exists = true;
                 });
-                if (exists) { markInvalid($("#ProductId")); ok = false; }
+                if (exists) {
+                    markInvalid($("#ProductId"));
+                    showQtyError("هذا المنتج مضاف بالفعل داخل الفاتورة.");
+                    ok = false;
+                }
             }
 
             if (!ok) return;
 
+            // ✅ إضافة الصف
             var idx = $("#itemsTable tbody tr").length;
             var lineTotal = price * qty;
 
@@ -304,13 +446,18 @@
 
             $("#itemsTable tbody").append(row);
 
-            // keep product selected (no reset)
             $("#StockQty").val("");
             $("#Price").val("");
             $("#ReqQty").val("");
 
             recalcTotal();
         });
+
+
+        function clearInvalid() {
+            $("#StoreId,#ProductId,#ReqQty").removeClass("is-invalid");
+            clearQtyError();
+        }
 
         // =========================
         // Remove row
@@ -332,5 +479,8 @@
                 $("#StoreId").trigger("change");
             }
         });
+
+        
+
     </script>
 }
