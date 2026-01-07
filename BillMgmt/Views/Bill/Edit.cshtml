@@ -35,6 +35,16 @@
     @section scripts {
 
         <script>
+            function markInvalid($el) { $el.addClass("is-invalid"); }
+
+            function showQtyError(msg) {
+                $("#qtyError").text(msg).show();
+            }
+
+            function clearQtyError() {
+                $("#qtyError").hide().text("");
+            }
+
         // =========================================================
         // #region Calculations: Total Amount
         // - Recalculate bill total from existing table rows.
@@ -154,17 +164,20 @@
                 ok = false;
             }
 
-            // prevent duplicates silently
+            // prevent duplicate product (with message)
             if (ok) {
                 var exists = false;
                 $("#itemsTable tbody .hProductId").each(function () {
                     if ($(this).val() == productId) exists = true;
                 });
+
                 if (exists) {
                     markInvalid($("#ProductId"));
+                    showQtyError("هذا المنتج مضاف بالفعل داخل الفاتورة. احذف السطر القديم أو غيّر المنتج.");
                     ok = false;
                 }
             }
+
 
             if (!ok) return;
 
